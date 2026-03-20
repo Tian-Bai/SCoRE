@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from utility import gen_data_Jin2023, BH, eBH, eval_MDR, eval_SDR
+from .utility import gen_data_Jin2023, BH, eBH, eval_MDR, eval_SDR
 from sklearn.ensemble import RandomForestRegressor
 import random
 from tqdm import tqdm
