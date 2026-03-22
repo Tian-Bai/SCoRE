@@ -8,8 +8,7 @@ from sklearn.ensemble import RandomForestRegressor
 root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
-from utility import eval_SDR, gen_data_1, gen_data_2, gen_data_Jin2023, loss_1, loss_2, loss_Jin2023, Lpredictor
-from SCoRE import SCoRE_SDR_fast
+from SCoRE import eval_SDR, gen_data_1, gen_data_2, gen_data_Jin2023, loss_1, loss_2, loss_Jin2023, SCoRE_SDR_fast
 import argparse
 from tqdm import tqdm
 

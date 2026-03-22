@@ -9,7 +9,7 @@ root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
 from SCoRE import SCoRE_SDR_fast
-from utility import eval_SDR
+from SCoRE import eval_SDR
 
 import argparse
 import random

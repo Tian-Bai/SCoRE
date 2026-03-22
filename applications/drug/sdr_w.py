@@ -9,7 +9,7 @@ root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
 from SCoRE import SCoRE_SDR_w_fast
-from utility import eval_SDR
+from SCoRE import eval_SDR
 from rdkit import Chem
 from rdkit.Chem import AllChem
 from sklearn.ensemble import RandomForestClassifier
