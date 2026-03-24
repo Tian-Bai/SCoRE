@@ -150,7 +150,7 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
         Scalib_pred = Lcalib_pred / mu_reward.predict(Xcalib)
         Stest_pred = Ltest_pred / mu_reward.predict(Xtest)
 
-    K = 101 # LTT can handle an arbitrarily dense grid because there is no penalty via K!
+    K = 101
     search_grid = np.linspace(0, 1, K)
     search_grid_r = np.linspace(0, np.max(Scalib_pred) * 1.1, K)
     
