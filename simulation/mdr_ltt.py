@@ -9,6 +9,7 @@ root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
 from SCoRE import eval_MDR, gen_data_1, gen_data_2, gen_data_Jin2023, loss_1, loss_2, loss_Jin2023
+from scipy.stats import binom
 import argparse
 from tqdm import tqdm
 
@@ -67,28 +68,23 @@ if reward_type == 0:
 
 all_res = pd.DataFrame()
 
-def emp_rademacher_complexity(L, S, k=100):
-    n = len(L)
-    sort_idx = np.argsort(S)
-    L_sorted = L[sort_idx]
-    S_sorted = S[sort_idx]
-    
-    # handles ties in S. If is_group_end is false, using that value is not allowed in finding the supremum
-    is_group_end = np.append(np.diff(S_sorted) != 0, True)
-    
-    max_sums = np.zeros(k)
-    for i in range(k):
-        sigma = np.random.choice([-1, 1], size=n)
-        prefix_sums = np.cumsum(sigma * L_sorted)
-        valid_sums = prefix_sums[is_group_end]
-        max_sums[i] = max(0, np.max(valid_sums))
-        
-    return np.mean(max_sums) / n
+def avg_loss_at_t(L, S, t):
+    return np.mean(L * (S <= t))
 
-def search_t(L, S, grid, penalty, q):
-    emp_means = np.array([np.mean(L * (S <= t)) for t in grid])
-    valid_t = grid[emp_means + penalty <= q]
-    return np.max(valid_t) if len(valid_t) > 0 else -np.inf
+def hb_p_value(avg_loss, n, q):
+    if avg_loss >= q:
+        return 1.0
+
+    def h_1(a, b):
+        if a <= 0:
+            return -np.log(1 - b)
+        if a >= 1:
+            return -np.log(b)
+        return a * np.log(a / b) + (1 - a) * np.log((1 - a) / (1 - b))
+
+    p_hoeffding = np.exp(-n * h_1(avg_loss, q))
+    p_bentkus = np.e * binom.cdf(np.floor(n * avg_loss), n, q)
+    return min(p_hoeffding, p_bentkus)
 
 for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
     random.seed(i_itr)
@@ -154,83 +150,45 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
         Scalib_pred = Lcalib_pred / mu_reward.predict(Xcalib)
         Stest_pred = Ltest_pred / mu_reward.predict(Xtest)
 
-    # get the empirical Rademacher complexity of the function class L 1{s(X) <= t}
-    rad_comp = emp_rademacher_complexity(Lcalib, Lcalib_pred, k=100)
-    rad_comp_r = emp_rademacher_complexity(Lcalib, Scalib_pred, k=100)
-
-    # constants for the rademacher approach
-    eps = np.sqrt(np.log(2 / args.delta) / (2 * ncalib))
-    pen_rad = 2 * rad_comp + 3 * eps # 1 * eps due to empirical mean, 2 * eps due to empirical rademacher
-    pen_rad_r = 2 * rad_comp_r + 3 * eps
-
-    # hoeffding approach
-    K = 101
-    pen_hoef = np.sqrt(np.log(2 * K / args.delta) / (2 * ncalib))
+    K = 101 # LTT can handle an arbitrarily dense grid because there is no penalty via K!
     search_grid = np.linspace(0, 1, K)
-    search_grid_r = np.linspace(0, np.max(Scalib_pred) * 1.1, K) # strictly speaking the grid shouldn't be data-dependent..
+    search_grid_r = np.linspace(0, np.max(Scalib_pred) * 1.1, K)
     
     for q in q_list:
-        # search for threshold based on rademacher complexity
-        t_rad = search_t(Lcalib, Lcalib_pred, Lcalib_pred, pen_rad, q)
-        sel_rad = np.where(Ltest_pred <= t_rad)[0]
+        # LTT approach
+        t_ltt = -np.inf
+        for t in search_grid:
+            emp_mean = np.sum(Lcalib * (Lcalib_pred <= t)) / ncalib
+            
+            # The test: is empirical risk small enough to reject H_t at level q?
+            if hb_p_value(avg_loss_at_t(Lcalib, Lcalib_pred, t), ncalib, q) <= args.delta:
+                t_ltt = t
+            else:
+                break
 
-        mdr_rad, nsel_rad = eval_MDR(Ltest, np.ones_like(Ltest), sel_rad)
-        _, reward_rad = eval_MDR(Ltest, Rtest, sel_rad)
+        sel_ltt = np.where(Ltest_pred <= t_ltt)[0]
+        mdr_ltt, nsel_ltt = eval_MDR(Ltest, np.ones_like(Ltest), sel_ltt)
+        _, reward_ltt = eval_MDR(Ltest, Rtest, sel_ltt)
 
-        # with reward
-        t_rad_r = search_t(Lcalib, Scalib_pred, Scalib_pred, pen_rad_r, q)
-        sel_r = np.where(Stest_pred <= t_rad_r)[0]
-
-        mdr_rad_r, nsel_rad_r = eval_MDR(Ltest, np.ones_like(Ltest), sel_r)
-        _, reward_rad_r = eval_MDR(Ltest, Rtest, sel_r)
-
-        # Hoeffding approach
-        t_hoef = search_t(Lcalib, Lcalib_pred, search_grid, pen_hoef, q)
-        sel_hoef = np.where(Ltest_pred <= t_hoef)[0]
-
-        mdr_hoef, nsel_hoef = eval_MDR(Ltest, np.ones_like(Ltest), sel_hoef)
-        _, reward_hoef = eval_MDR(Ltest, Rtest, sel_hoef)
-
-        # with reward
-        t_hoef_r = search_t(Lcalib, Scalib_pred, search_grid, pen_hoef, q)
-        sel_hoef_r = np.where(Stest_pred <= t_hoef_r)[0]
-
-        mdr_hoef_r, nsel_hoef_r = eval_MDR(Ltest, np.ones_like(Ltest), sel_hoef_r)
-        _, reward_hoef_r = eval_MDR(Ltest, Rtest, sel_hoef_r)
-
-        # Naive approach: no correction at all
-        t_naive = search_t(Lcalib, Lcalib_pred, search_grid, 0, q)
-        sel_naive = np.where(Ltest_pred <= t_naive)[0]
-
-        mdr_naive, nsel_naive = eval_MDR(Ltest, np.ones_like(Ltest), sel_naive)
-        _, reward_naive = eval_MDR(Ltest, Rtest, sel_naive)
-
-        # Naive with reward
-        t_naive_r = search_t(Lcalib, Scalib_pred, search_grid_r, 0, q)
-        sel_naive_r = np.where(Stest_pred <= t_naive_r)[0]
-
-        mdr_naive_r, nsel_naive_r = eval_MDR(Ltest, np.ones_like(Ltest), sel_naive_r)
-        _, reward_naive_r = eval_MDR(Ltest, Rtest, sel_naive_r)
+        # LTT approach for MDR with reward
+        t_ltt_r = -np.inf
+        for t in search_grid_r:
+            if hb_p_value(avg_loss_at_t(Lcalib, Scalib_pred, t), ncalib, q) <= args.delta:
+                t_ltt_r = t
+            else:
+                break
+                
+        sel_ltt_r = np.where(Stest_pred <= t_ltt_r)[0]
+        mdr_ltt_r, nsel_ltt_r = eval_MDR(Ltest, np.ones_like(Ltest), sel_ltt_r)
+        _, reward_ltt_r = eval_MDR(Ltest, Rtest, sel_ltt_r)
 
         SCoRE_df = pd.DataFrame({
-            'mdr_rad': [mdr_rad],
-            'nsel_rad': [nsel_rad],
-            'reward_rad': [reward_rad],
-            'mdr_rad_r': [mdr_rad_r],
-            'nsel_rad_r': [nsel_rad_r],
-            'reward_rad_r': [reward_rad_r],
-            'mdr_hoef': [mdr_hoef],
-            'nsel_hoef': [nsel_hoef],
-            'reward_hoef': [reward_hoef],
-            'mdr_hoef_r': [mdr_hoef_r],
-            'nsel_hoef_r': [nsel_hoef_r],
-            'reward_hoef_r': [reward_hoef_r],
-            'mdr_naive': [mdr_naive],
-            'nsel_naive': [nsel_naive],
-            'reward_naive': [reward_naive],
-            'mdr_naive_r': [mdr_naive_r],
-            'nsel_naive_r': [nsel_naive_r],
-            'reward_naive_r': [reward_naive_r],
+            'mdr_ltt': [mdr_ltt],
+            'nsel_ltt': [nsel_ltt],
+            'reward_ltt': [reward_ltt],
+            'mdr_ltt_r': [mdr_ltt_r],
+            'nsel_ltt_r': [nsel_ltt_r],
+            'reward_ltt_r': [reward_ltt_r],
             'q': [q],
             'setting': [setting],
             'dim': [dim],
@@ -246,11 +204,8 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
 
         all_res = pd.concat((all_res, SCoRE_df))
 
-    # alternatively, use concentration to get an upper bound U(t) on E[L 1{s(X) < t}] and select t that U(t) <= alpha
+if not os.path.exists('results_ltt'):
+    os.makedirs('results_ltt')
 
-if not os.path.exists('results_conc'):
-    os.makedirs('results_conc')
-
-all_res.to_csv(os.path.join('results_conc', f"Conc_MDR, case={case_idx}, setting={setting}, sigma={sig}, tau={tau}, ncalib={ncalib}, ntest={ntest}, Nrep={Nrep}, seedgroup={seedgroup}, reward={reward_type}, oracle={oracle}, fit_Y={fit_Y}, oracle_mdl={oracle_mdl}.csv"))
-        
+all_res.to_csv(os.path.join('results_ltt', f"LTT_MDR, case={case_idx}, setting={setting}, sigma={sig}, tau={tau}, ncalib={ncalib}, ntest={ntest}, Nrep={Nrep}, seedgroup={seedgroup}, reward={reward_type}, oracle={oracle}, fit_Y={fit_Y}, oracle_mdl={oracle_mdl}.csv"))
 

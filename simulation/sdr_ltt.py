@@ -9,6 +9,7 @@ root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
 from SCoRE import eval_SDR, gen_data_1, gen_data_2, gen_data_Jin2023, loss_1, loss_2, loss_Jin2023, SCoRE_SDR_fast
+from scipy.stats import binom
 import argparse
 from tqdm import tqdm
 
@@ -67,29 +68,20 @@ if reward_type == 0:
 
 all_res = pd.DataFrame()
 
-def emp_rademacher_complexity(L, S, k=100):
-    n = len(L)
-    sort_idx = np.argsort(S)
-    L_sorted = L[sort_idx]
-    S_sorted = S[sort_idx]
-    
-    is_group_end = np.append(np.diff(S_sorted) != 0, True)
-    
-    max_sums = np.zeros(k)
-    for i in range(k):
-        sigma = np.random.choice([-1, 1], size=n)
-        prefix_sums = np.cumsum(sigma * L_sorted)
-        valid_sums = prefix_sums[is_group_end]
-        max_sums[i] = max(0, np.max(valid_sums))
-        
-    return np.mean(max_sums) / n
+def hb_p_value(r_hat, n, q):
+    if r_hat >= q:
+        return 1.0
 
-def search_t(L, S, grid, pen_num, pen_den, q):
-    emp_num = np.array([np.mean(L * (S <= t)) for t in grid])
-    emp_den = np.array([np.mean(S <= t) for t in grid])
+    def h_1(a, b):
+        if a <= 0:
+            return -np.log(1 - b)
+        if a >= 1:
+            return -np.log(b)
+        return a * np.log(a / b) + (1 - a) * np.log((1 - a) / (1 - b))
 
-    valid_t = grid[(emp_den - pen_den > 0) & (((emp_num + pen_num) / np.maximum(emp_den - pen_den, 1e-12)) <= q)]
-    return np.max(valid_t) if len(valid_t) > 0 else -np.inf
+    p_hoeffding = np.exp(-n * h_1(r_hat, q))
+    p_bentkus = np.e * binom.cdf(np.floor(n * r_hat), n, q)
+    return min(p_hoeffding, p_bentkus)
 
 for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
     random.seed(i_itr)
@@ -154,84 +146,30 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
         
         Scalib_pred = Lcalib_pred / mu_reward.predict(Xcalib)
         Stest_pred = Ltest_pred / mu_reward.predict(Xtest)
-    
-    # get the empirical Rademacher complexity of the classes L 1{s(X) <= t}, and 1{s(X) <= t}
-    rad_comp_num = emp_rademacher_complexity(Lcalib, Lcalib_pred, k=100)
-    rad_comp_den = emp_rademacher_complexity(np.ones_like(Lcalib), Lcalib_pred, k=100)
-    rad_comp_num_r = emp_rademacher_complexity(Lcalib, Scalib_pred, k=100)
-    rad_comp_den_r = emp_rademacher_complexity(np.ones_like(Lcalib), Scalib_pred, k=100)
 
-    # constants for the rademacher approach
-    eps = np.sqrt(np.log(4 / args.delta) / (2 * ncalib))
-    penalty_num_rad = 2 * rad_comp_num + 3 * eps
-    penalty_den_rad = 2 * rad_comp_den + 3 * eps
-
-    penalty_num_rad_r = 2 * rad_comp_num_r + 3 * eps
-    penalty_den_rad_r = 2 * rad_comp_den_r + 3 * eps
-
-    # constants for hoeffding approach
     K = 101
-    penalty_num_hoef = np.sqrt(np.log(4 * K / args.delta) / (2 * ncalib))
-    penalty_den_hoef = np.sqrt(np.log(4 * K / args.delta) / (2 * ncalib))
-
     search_grid = np.linspace(0, 1, K)
-    search_grid_r = np.linspace(0, np.max(Scalib_pred) * 1.1, K)
 
     for q in q_list:
-        # rademacher
-        t_rad = search_t(Lcalib, Lcalib_pred, Lcalib_pred, penalty_num_rad, penalty_den_rad, q)
-        sel_rad = np.where(Ltest_pred <= t_rad)[0]
-        sdr_rad, _, nsel_rad = eval_SDR(Ltest, np.ones_like(Ltest), sel_rad)
-        _, _, reward_rad = eval_SDR(Ltest, Rtest, sel_rad)
-
-        # with reward
-        t_rad_r = search_t(Lcalib, Scalib_pred, Scalib_pred, penalty_num_rad_r, penalty_den_rad_r, q)
-        sel_rad_r = np.where(Stest_pred <= t_rad_r)[0]
-        sdr_rad_r, _, nsel_rad_r = eval_SDR(Ltest, np.ones_like(Ltest), sel_rad_r)
-        _, _, reward_rad_r = eval_SDR(Ltest, Rtest, sel_rad_r)
-
-        # hoeffding
-        t_hoef = search_t(Lcalib, Lcalib_pred, search_grid, penalty_num_hoef, penalty_den_hoef, q)
-        sel_hoef = np.where(Ltest_pred <= t_hoef)[0]
-        sdr_hoef, _, nsel_hoef = eval_SDR(Ltest, np.ones_like(Ltest), sel_hoef)
-        _, _, reward_hoef = eval_SDR(Ltest, Rtest, sel_hoef)
-
-        # with reward
-        t_hoef_r = search_t(Lcalib, Scalib_pred, search_grid_r, penalty_num_hoef, penalty_den_hoef, q)
-        sel_hoef_r = np.where(Stest_pred <= t_hoef_r)[0]
-        sdr_hoef_r, _, nsel_hoef_r = eval_SDR(Ltest, np.ones_like(Ltest), sel_hoef_r)
-        _, _, reward_hoef_r = eval_SDR(Ltest, Rtest, sel_hoef_r)
-
-        # naive
-        t_naive = search_t(Lcalib, Lcalib_pred, search_grid, 0, 0, q)
-        sel_naive = np.where(Ltest_pred <= t_naive)[0]
-        sdr_naive, _, nsel_naive = eval_SDR(Ltest, np.ones_like(Ltest), sel_naive)
-        _, _, reward_naive = eval_SDR(Ltest, Rtest, sel_naive)
+        t_ltt = -np.inf
         
-        t_naive_r = search_t(Lcalib, Scalib_pred, search_grid_r, 0, 0, q)
-        sel_naive_r = np.where(Stest_pred <= t_naive_r)[0]
-        sdr_naive_r, _, nsel_naive_r = eval_SDR(Ltest, np.ones_like(Ltest), sel_naive_r)
-        _, _, reward_naive_r = eval_SDR(Ltest, Rtest, sel_naive_r)
+        # Test from smallest t to largest t -- fixed sequence test
+        for t in search_grid:
+            emp_mean = np.sum(Lcalib * (Lcalib_pred <= t)) / ncalib
+            
+            # The test: is empirical risk small enough to reject H_t at level q?
+            if hb_p_value(emp_mean, ncalib, q) <= args.delta:
+                t_ltt = t
+            else:
+                break
+
+        sel_ltt = np.where(Ltest_pred <= t_ltt)[0]
+        mdr_ltt, nsel_ltt = eval_MDR(Ltest, np.ones_like(Ltest), sel_ltt)
+        _, reward_ltt = eval_MDR(Ltest, Rtest, sel_ltt)
+
 
         SCoRE_df = pd.DataFrame({
-            'sdr_naive': [sdr_naive],
-            'nsel_naive': [nsel_naive],
-            'reward_naive': [reward_naive],
-            'sdr_naive_r': [sdr_naive_r],
-            'nsel_naive_r': [nsel_naive_r],
-            'reward_naive_r': [reward_naive_r],
-            'sdr_rad': [sdr_rad],
-            'nsel_rad': [nsel_rad],
-            'reward_rad': [reward_rad],
-            'sdr_rad_r': [sdr_rad_r],
-            'nsel_rad_r': [nsel_rad_r],
-            'reward_rad_r': [reward_rad_r],
-            'sdr_hoef': [sdr_hoef],
-            'nsel_hoef': [nsel_hoef],
-            'reward_hoef': [reward_hoef],
-            'sdr_hoef_r': [sdr_hoef_r],
-            'nsel_hoef_r': [nsel_hoef_r],
-            'reward_hoef_r': [reward_hoef_r],
+
             'q': [q],
             'setting': [setting],
             'dim': [dim],
