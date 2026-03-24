@@ -183,7 +183,7 @@ def SCoRE_SDR_bin(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_
         return_evals (bool, optional): Returns computed e-values if True.
         
     Returns:
-        Union[list, tuple]: Rejection set indices, or combined tuple depending on `return_evals`.
+        Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
     """
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
@@ -245,7 +245,7 @@ def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_eval
         return_evals (bool, optional): Returns computed e-values if True.
         
     Returns:
-        Union[list, tuple]: Selection list mapping matching accepted boundaries.
+        Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
     """
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
@@ -341,7 +341,7 @@ def SCoRE_SDR_fast(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return
         return_evals (bool, optional): Returns computed e-values if True.
         
     Returns:
-        Union[list, tuple]: Selection list mapping matching accepted boundaries.
+        Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
     """
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
@@ -468,7 +468,7 @@ def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, ora
         return_evals (bool, optional): Returns computed e-values if True.
         
     Returns:
-        Union[list, tuple]: Processed target boolean array selection indicators bounded safely.
+        Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
     """
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
