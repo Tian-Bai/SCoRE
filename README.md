@@ -1,4 +1,4 @@
-# OptCS
+# SCoRE
 
 This repository contains the code to reproduce the results in the paper **Conformal Selective Prediction with General Risk Control**.
 
