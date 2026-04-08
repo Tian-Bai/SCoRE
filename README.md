@@ -1,6 +1,6 @@
 # SCoRE
 
-This repository contains the code to reproduce the results in the paper **Conformal Selective Prediction with General Risk Control**.
+This repository contains the code to reproduce the results in the paper [https://arxiv.org/abs/2603.24704](Conformal Selective Prediction with General Risk Control).
 
 ## Folders
 
