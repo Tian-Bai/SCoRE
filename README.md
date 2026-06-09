@@ -4,7 +4,7 @@ SCoRE implements conformal selective prediction procedures for marginal
 deployment risk (MDR) and selective deployment risk (SDR) control.
 
 This repository also contains the simulation and application code used for the
-paper **Conformal Selective Prediction with General Risk Control**.
+paper [Conformal Selective Prediction with General Risk Control](https://arxiv.org/abs/2603.24704).
 
 ## Installation
 
@@ -20,7 +20,7 @@ Install optional dependencies for the research scripts:
 python -m pip install -e ".[experiments]"
 ```
 
-After the package is published, users should be able to install it with:
+After the package is published, install it with:
 
 ```bash
 python -m pip install SCoRE
@@ -89,21 +89,3 @@ Additional utilities:
   - `applications/llm/`: flexible LLM abstention
 - `simulation/`: simulation experiments
 - `simulation_w/`: simulation experiments with covariate shifts
-
-## Development
-
-Run the package tests:
-
-```bash
-python -m unittest discover
-```
-
-Build and check distributions before publishing:
-
-```bash
-python -m build
-python -m twine check dist/*
-```
-
-Before uploading to PyPI, choose and add a license, confirm the final project
-name availability, and fill in author/project URLs in `pyproject.toml`.
