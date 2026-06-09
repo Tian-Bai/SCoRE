@@ -1,12 +1,109 @@
-# OptCS
+# SCoRE
 
-This repository contains the code to reproduce the results in the paper **Conformal Selective Prediction with General Risk Control**.
+SCoRE implements conformal selective prediction procedures for marginal
+deployment risk (MDR) and selective deployment risk (SDR) control.
 
-## Folders
+This repository also contains the simulation and application code used for the
+paper **Conformal Selective Prediction with General Risk Control**.
 
-- `applications/`: Real-data applications
-    - `applications/drug/`: Application to efficient, cost-aware drug discovery (Section 7.1)
-    - `applications/icu/`: Application to clinical prediction error management (Section 7.2)
-    - `applications/llm/`: Application to flexible LLM Abstention (Section 7.3)
-- `simulation/`: Simulation experiments (Section 8)
-- `simulation_w/`: Simulation experiments with covariate shifts (Section 8)
+## Installation
+
+Install the package from a local checkout:
+
+```bash
+python -m pip install -e .
+```
+
+Install optional dependencies for the research scripts:
+
+```bash
+python -m pip install -e ".[experiments]"
+```
+
+After the package is published, users should be able to install it with:
+
+```bash
+python -m pip install SCoRE
+```
+
+## Quickstart
+
+```python
+import numpy as np
+from SCoRE import SCoRE_MDR, SCoRE_SDR
+
+lcalib = np.array([0, 1, 0, 1])
+scalib = np.array([0.1, 0.4, 0.2, 0.8])
+stest = np.array([0.15, 0.5, 0.9])
+
+# Dtest keeps the same tuple shape as Dcalib, but the true test loss is not used.
+dcalib = (lcalib, scalib)
+dtest = (None, stest)
+
+mdr_selected = SCoRE_MDR(dcalib, dtest, alpha=0.5, gamma=0.5)
+sdr_selected = SCoRE_SDR(dcalib, dtest, alpha=0.5, gamma=0.5)
+```
+
+Functions return NumPy integer index arrays, so selections can be used directly
+to index NumPy arrays.
+
+When using randomized pruning, pass `random_state` for reproducible results:
+
+```python
+selected = SCoRE_SDR(
+    dcalib,
+    dtest,
+    alpha=0.5,
+    gamma=1.0,
+    prune="hete",
+    random_state=123,
+)
+```
+
+## Public API
+
+The top-level package exports the main procedures and utilities:
+
+Recommended package entry points:
+
+- `SCoRE_MDR`
+- `SCoRE_SDR`
+
+Additional utilities:
+
+- `CS`
+- `SCoRE_MDR_bf`, `SCoRE_MDR_w`, `SCoRE_SDR_w_fast`
+- `BH`, `eBH`
+- `eval_MDR`, `eval_SDR`
+- `loss_Jin2023`, `loss_1`, `loss_2`
+- `gen_data_Jin2023`, `gen_data_1`, `gen_data_2`
+- `Lpredictor`
+
+## Repository Layout
+
+- `SCoRE/`: installable Python package
+- `tests/`: package tests
+- `applications/`: real-data applications
+  - `applications/drug/`: efficient, cost-aware drug discovery
+  - `applications/icu/`: clinical prediction error management
+  - `applications/llm/`: flexible LLM abstention
+- `simulation/`: simulation experiments
+- `simulation_w/`: simulation experiments with covariate shifts
+
+## Development
+
+Run the package tests:
+
+```bash
+python -m unittest discover
+```
+
+Build and check distributions before publishing:
+
+```bash
+python -m build
+python -m twine check dist/*
+```
+
+Before uploading to PyPI, choose and add a license, confirm the final project
+name availability, and fill in author/project URLs in `pyproject.toml`.

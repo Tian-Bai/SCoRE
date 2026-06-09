@@ -1,0 +1,9 @@
+include README.md
+include pyproject.toml
+include setup.py
+recursive-include SCoRE *.py
+recursive-include tests *.py
+prune applications
+prune simulation
+prune simulation_w
+global-exclude __pycache__ *.py[cod] .DS_Store

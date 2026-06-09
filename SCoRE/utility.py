@@ -1,7 +1,22 @@
 import numpy as np
-import pandas as pd
-from scipy.stats import multivariate_t
-from scipy.special import expit
+
+
+def _expit(x):
+    x = np.asarray(x, dtype=float)
+    out = np.empty_like(x, dtype=float)
+    positive = x >= 0
+    out[positive] = 1.0 / (1.0 + np.exp(-x[positive]))
+    exp_x = np.exp(x[~positive])
+    out[~positive] = exp_x / (1.0 + exp_x)
+    return out
+
+
+def _get_rng(random_state):
+    if random_state is None:
+        return np.random
+    if isinstance(random_state, np.random.Generator):
+        return random_state
+    return np.random.default_rng(random_state)
 
 def loss_Jin2023(Y, tau):
     """Calculates the smoothened indicator loss function, similar to the data generation process in Jin and Candes (2023).
@@ -17,11 +32,11 @@ def loss_Jin2023(Y, tau):
         np.ndarray: The computed loss values.
     """
     if tau != np.inf:
-        return expit(-Y * tau) # L = smoothened indicator of <= 0
+        return _expit(-Y * tau) # L = smoothened indicator of <= 0
     else:
         return (Y <= 0)
 
-def gen_data_Jin2023(setting, n, sig, dim=20):
+def gen_data_Jin2023(setting, n, sig, dim=20, random_state=None):
     """Generates artificial data using the data generation process in Jin and Candes (2023).
     
     Args:
@@ -29,23 +44,28 @@ def gen_data_Jin2023(setting, n, sig, dim=20):
         n (int): Number of samples to generate.
         sig (float): Noise scaling factor.
         dim (int, optional): Dimensionality of the feature space. Defaults to 20.
+        random_state (int or np.random.Generator, optional): Random seed or generator for reproducible samples.
         
     Returns:
         tuple: A tuple (X, mu_x, eps, Y) representing the generated data and components.
     """
+    rng = _get_rng(random_state)
+
     if setting == 1:
-        X = np.random.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
+        X = rng.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
         mu_x = (X[:,0] * X[:,1] > 0) * (X[:,3] > 0.5) * (0.25 + X[:,3]) + (X[:,0] * X[:,1] <= 0) * (X[:,3] < -0.5) * (X[:,3] - 0.25)
-        eps = np.random.normal(size=n) * (5.5 - abs(mu_x)) / 2 * sig
+        eps = rng.normal(size=n) * (5.5 - abs(mu_x)) / 2 * sig
         Y = mu_x + eps
         return X, mu_x, eps, Y
 
     if setting == 2:
-        X = np.random.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
+        X = rng.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
         mu_x = (X[:,0] * X[:,1] + X[:,2] ** 2 + np.exp(X[:,3] - 1) - 1) * 2
-        eps = np.random.normal(size=n) * (5.5 - abs(mu_x)) / 2 * sig
+        eps = rng.normal(size=n) * (5.5 - abs(mu_x)) / 2 * sig
         Y = mu_x + eps
         return X, mu_x, eps, Y
+
+    raise ValueError("setting must be 1 or 2")
 
 def loss_1(Y):
     """Calculates the expected shortfall-like loss function.
@@ -60,7 +80,7 @@ def loss_1(Y):
     """
     return 1/6 * Y * (Y > 2)
 
-def gen_data_1(setting, n, sig, dim=20):
+def gen_data_1(setting, n, sig, dim=20, random_state=None):
     """Generates artificial data for the first case.
     
     Args:
@@ -68,23 +88,28 @@ def gen_data_1(setting, n, sig, dim=20):
         n (int): Number of samples to generate.
         sig (float): Noise scaling factor.
         dim (int, optional): Dimensionality of the features. Defaults to 20.
+        random_state (int or np.random.Generator, optional): Random seed or generator for reproducible samples.
         
     Returns:
         tuple: A tuple (X, mu_x, eps, Y) containing the covariates and responses.
     """
+    rng = _get_rng(random_state)
+
     if setting == 1:
-        X = np.random.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
+        X = rng.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
         mu_x = (X[:,0] * X[:,1] > 0) * (X[:,3] > 0.5) * (0.5 + X[:,3]) + (X[:,0] * X[:,1] <= 0) * (X[:,3] < -0.5) * (X[:,3] - 0.5) + 3 # now in (1.5, 4.5)
-        eps = np.clip(np.random.normal(size=n) * sig * (5.5 - mu_x), -1.5, 1.5) # clip the noise to be in (-1.5, 1.5)
+        eps = np.clip(rng.normal(size=n) * sig * (5.5 - mu_x), -1.5, 1.5) # clip the noise to be in (-1.5, 1.5)
         Y = mu_x + eps # (0, 6)
         return X, mu_x, eps, Y
     
     if setting == 2:
-        X = np.random.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
+        X = rng.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
         mu_x = X[:,0] * X[:,1] + X[:,2] ** 2 + np.exp(X[:,3] - 1) + 2 # in (1, 5)
-        eps = np.clip(np.random.normal(size=n) * sig * (6 - mu_x) * 0.5, -1, 1) # clip the noise to be in (-1, 1)
+        eps = np.clip(rng.normal(size=n) * sig * (6 - mu_x) * 0.5, -1, 1) # clip the noise to be in (-1, 1)
         Y = mu_x + eps # (0, 6)
         return X, mu_x, eps, Y
+
+    raise ValueError("setting must be 1 or 2")
     
 def loss_2(Y, f, X, clip_const):
     """Calculates clipped prediction error loss.
@@ -102,7 +127,7 @@ def loss_2(Y, f, X, clip_const):
     """
     return np.clip((Y - f.predict(X)) ** 2, 0, clip_const) / clip_const
 
-def gen_data_2(setting, n, sig, dim=20):
+def gen_data_2(setting, n, sig, dim=20, random_state=None):
     """Generates artificial data for the second case.
     
     Args:
@@ -110,23 +135,28 @@ def gen_data_2(setting, n, sig, dim=20):
         n (int): Number of samples to generate.
         sig (float): Noise scaling factor.
         dim (int, optional): Dimensionality. Defaults to 20.
+        random_state (int or np.random.Generator, optional): Random seed or generator for reproducible samples.
         
     Returns:
         tuple: A tuple (X, mu_x, eps, Y) with covariates and label values.
     """
+    rng = _get_rng(random_state)
+
     if setting == 1:
-        X = np.random.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
+        X = rng.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
         mu_x = (X[:,0] * X[:,1] > 0) * (X[:,3] > 0.5) * (0.5 + X[:,3]) + (X[:,0] * X[:,1] <= 0) * (X[:,3] < -0.5) * (X[:,3] - 0.5) + 3 # now in (1.5, 4.5)
-        eps = np.clip(np.random.normal(size=n) * sig * (5.5 - mu_x), -1.5, 1.5) # clip the noise to be in (-1.5, 1.5)
+        eps = np.clip(rng.normal(size=n) * sig * (5.5 - mu_x), -1.5, 1.5) # clip the noise to be in (-1.5, 1.5)
         Y = mu_x + eps # (0, 6)
         return X, mu_x, eps, Y
     
     if setting == 2:
-        X = np.random.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
+        X = rng.uniform(low=-1, high=1, size=n*dim).reshape((n,dim))
         mu_x = X[:,0] * X[:,1] + X[:,2] ** 2 + np.exp(X[:,3] - 1) + 2 # in (1, 5)
-        eps = np.clip(np.random.normal(size=n) * sig * (6 - mu_x) * 0.5, -1, 1) # clip the noise to be in (-1, 1)
+        eps = np.clip(rng.normal(size=n) * sig * (6 - mu_x) * 0.5, -1, 1) # clip the noise to be in (-1, 1)
         Y = mu_x + eps # (0, 6)
         return X, mu_x, eps, Y
+
+    raise ValueError("setting must be 1 or 2")
 
 def BH(pvals, q):
     """Applies the Benjamini-Hochberg (BH) procedure to a list of p-values.
@@ -138,18 +168,21 @@ def BH(pvals, q):
     Returns:
         np.ndarray: The indices forming the rejection set.
     """
-    ntest = len(pvals)
-         
-    df_test = pd.DataFrame({"id": range(ntest), "pval": pvals}).sort_values(by='pval')
-    
-    df_test['threshold'] = q * np.linspace(1, ntest, num=ntest) / ntest 
-    idx_smaller = [j for j in range(ntest) if df_test.iloc[j,1] <= df_test.iloc[j,2]]
-    
-    if len(idx_smaller) == 0:
-        return np.array([])
-    else:
-        idx_sel = np.array(df_test.index[range(np.max(idx_smaller) + 1)])
-        return idx_sel
+    pvals = np.asarray(pvals, dtype=float)
+    ntest = pvals.size
+
+    if ntest == 0:
+        return np.array([], dtype=int)
+
+    order = np.argsort(pvals, kind="mergesort")
+    sorted_pvals = pvals[order]
+    thresholds = q * np.arange(1, ntest + 1) / ntest
+    selected = np.flatnonzero(sorted_pvals <= thresholds)
+
+    if selected.size == 0:
+        return np.array([], dtype=int)
+
+    return order[: selected[-1] + 1]
 
 def eBH(evals, q):
     """Applies the base e-BH procedure to a list of e-values.

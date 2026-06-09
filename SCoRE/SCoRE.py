@@ -1,8 +1,39 @@
 import numpy as np
-import pandas as pd
-from .utility import gen_data_Jin2023, BH, eBH, eval_MDR, eval_SDR
+from .utility import BH, eBH
 
 # implementation of SCoRE procedures
+
+def _uniform_random(random_state, size=None):
+    if random_state is None:
+        return np.random.uniform(0, 1, size)
+    if isinstance(random_state, np.random.Generator):
+        return random_state.uniform(0, 1, size)
+    return np.random.default_rng(random_state).uniform(0, 1, size)
+
+
+def _as_index_array(sel):
+    return np.asarray(sel, dtype=int)
+
+
+def _validate_alpha(alpha):
+    alpha = float(alpha)
+    if not np.isfinite(alpha) or alpha <= 0 or alpha > 1:
+        raise ValueError("alpha must be in (0, 1]")
+    return alpha
+
+
+def _validate_gamma(gamma):
+    gamma = float(gamma)
+    if not np.isfinite(gamma) or gamma < 0 or gamma > 1:
+        raise ValueError("gamma must be in [0, 1]")
+    return gamma
+
+
+def _validate_prune(prune):
+    if prune not in (None, "hete", "homo"):
+        raise ValueError("prune must be one of None, 'hete', or 'homo'")
+    return prune
+
 
 def CS(Dcalib, Dtest, alpha, mult_test=True, return_pvals=False):
     """Conformal Selection (CS) procedure for binary losses that controls the marginal deployment risk (MDR) or selective deployment risk (SDR).
@@ -19,6 +50,7 @@ def CS(Dcalib, Dtest, alpha, mult_test=True, return_pvals=False):
     Returns:
         Union[list, tuple]: A list of selected indices, or a tuple of (selection_list, p-values) if return_pvals is True.
     """
+    alpha = _validate_alpha(alpha)
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
     Ncalib, Ntest = len(Scalib), len(Stest)
@@ -33,10 +65,10 @@ def CS(Dcalib, Dtest, alpha, mult_test=True, return_pvals=False):
     if mult_test:
         sel = BH(pvals, alpha)
     else:
-        sel = [j for j in range(Ntest) if pvals[j] <= alpha]
+        sel = np.flatnonzero(pvals <= alpha)
 
     if not return_pvals:
-        return sel
+        return _as_index_array(sel)
     return sel, pvals
 
 def SCoRE_MDR_bf(Dcalib, Dtest, alpha, gamma, return_evals=False):
@@ -52,6 +84,8 @@ def SCoRE_MDR_bf(Dcalib, Dtest, alpha, gamma, return_evals=False):
     Returns:
         Union[list, tuple]: A list of selected indices, or a tuple of (selection_list, p-values) if return_pvals is True.
     """
+    alpha = _validate_alpha(alpha)
+    gamma = _validate_gamma(gamma)
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
     Ncalib, Ntest = len(Scalib), len(Stest)
@@ -86,8 +120,8 @@ def SCoRE_MDR_bf(Dcalib, Dtest, alpha, gamma, return_evals=False):
             sel.append(i_itr)
 
     if not return_evals:
-        return sel
-    return sel, evalues
+        return _as_index_array(sel)
+    return _as_index_array(sel), evalues
 
 def SCoRE_MDR(Dcalib, Dtest, alpha, gamma):
     """SCoRE testing procedure with Marginal Deployment Risk (MDR) control, implemented using the computational shortcut. Note the e-values are not directly available with this shortcut.
@@ -101,6 +135,8 @@ def SCoRE_MDR(Dcalib, Dtest, alpha, gamma):
     Returns:
         list: A list of selected instances with low risk and deemed safe to deploy.
     """
+    alpha = _validate_alpha(alpha)
+    gamma = _validate_gamma(gamma)
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
     Ncalib, Ntest = len(Scalib), len(Stest)
@@ -124,7 +160,7 @@ def SCoRE_MDR(Dcalib, Dtest, alpha, gamma):
         if phi == 1: # selected
             sel.append(i_itr)
 
-    return sel
+    return _as_index_array(sel)
 
 def SCoRE_MDR_w(Dcalib, Dtest, wcalib, wtest, alpha, gamma):
     """SCoRE testing procedure with Marginal Discovery Rate (MDR) control under the covariate shift case, implemented using the computational shortcut.
@@ -140,6 +176,8 @@ def SCoRE_MDR_w(Dcalib, Dtest, wcalib, wtest, alpha, gamma):
     Returns:
         list: A list of selected instances with low risk and deemed safe to deploy.
     """
+    alpha = _validate_alpha(alpha)
+    gamma = _validate_gamma(gamma)
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
     Ncalib, Ntest = len(Scalib), len(Stest)
@@ -164,14 +202,12 @@ def SCoRE_MDR_w(Dcalib, Dtest, wcalib, wtest, alpha, gamma):
         if phi == 1: # selected
             sel.append(i_itr)
 
-    return sel
+    return _as_index_array(sel)
 
 ######## SDR ########
 
-def SCoRE_SDR_bin(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_evals=False):
-    """SCoRE testing procedure for Selective Deployment Risk (SDR) control over binary losses.
-    
-    Provides equivalent functionality to the `CS` method but integrated using bruteforce SCoRE algorithm. Can be used to verify the equivalence between SCoRE and CS (Corollary 5.4).
+def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_evals=False, random_state=None):
+    """SCoRE testing procedure for Selective Deployment Risk (SDR) control. Optimized implementation with time complexity $O(m(n+m) + (n+m)\\log(n+m))$.
     
     Args:
         Dcalib (tuple): (Lcalib, Scalib) for the calibration set.
@@ -181,168 +217,14 @@ def SCoRE_SDR_bin(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_
         prune (str, optional): Optional boosting strategy (either 'hete' or 'homo'). Use of 'homo' is generally recommended.
         oracle (bool, optional): [For testing only, when ground truth is available] Whether to use true underlying states. Defaults to False.
         return_evals (bool, optional): Returns computed e-values if True.
+        random_state (int or np.random.Generator, optional): Random seed or generator used when pruning is enabled.
         
     Returns:
         Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
     """
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
-    Ncalib, Ntest = len(Scalib), len(Stest)
-
-    M = list(np.concatenate([Scalib, Stest]))
-
-    def FR(j, t, l):
-        calib_avg_loss = (l * (Stest[j] <= t) + np.sum(Lcalib * (Scalib <= t))) / (Ncalib + 1)
-        test_avg_sel = (1 + np.sum(Stest <= t) - (Stest[j] <= t)) / Ntest
-        return calib_avg_loss / test_avg_sel
-
-    def FR_hat(j, t, l):
-        calib_avg_loss = (l + np.sum(Lcalib * (Scalib <= t))) / (Ncalib + 1)
-        test_avg_sel = (1 + np.sum(Stest <= t) - (Stest[j] <= t)) / Ntest
-        return calib_avg_loss / test_avg_sel
-
-    def t_gamma(j, l):
-        max_t = -np.inf
-        for cur_t in M:
-            if FR(j, cur_t, l) <= gamma:
-                max_t = max(max_t, cur_t)
-        return max_t
-
-    def ell(j, t):
-        return (Ncalib + 1) * gamma / Ntest * (1 + np.sum(Stest <= t) - (Stest[j] <= t)) - np.sum(Lcalib * (Scalib <= t))
-
-    evalues = np.zeros(Ntest)
-
-    for j in range(Ntest):
-        if not oracle:
-            t_1 = t_gamma(j, 1)
-        else:
-            t_1 = t_gamma(j, Ltest[j])
-
-        evalue_prime = (Ncalib + 1) * (Stest[j] <= t_1) / ((Stest[j] <= t_1) + np.sum(Lcalib * (Scalib <= t_1)))
-        evalues[j] = evalue_prime
-
-    if prune == 'hete':
-        evalues /= np.random.uniform(0, 1, len(evalues))
-    if prune == 'homo':
-        evalues /= np.random.uniform(0, 1)
-    sel = eBH(evalues, alpha)
-
-    if not return_evals:
-        return sel
-    return sel, evalues
-
-def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_evals=False):
-    """SCoRE testing procedure for Selective Deployment Risk (SDR) control. This is a naive implementation with cubic time complexity. Please use SCoRE_SDR_fast for large datasets.
-    
-    Args:
-        Dcalib (tuple): (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): (Ltest, Stest) for the test set.
-        alpha (float): The target error margin.
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
-        prune (str, optional): Optional boosting strategy (either 'hete' or 'homo'). Use of 'homo' is generally recommended.
-        oracle (bool, optional): [For testing only, when ground truth is available] Whether to use true underlying states. Defaults to False.
-        return_evals (bool, optional): Returns computed e-values if True.
-        
-    Returns:
-        Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
-    """
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
-    Ncalib, Ntest = len(Scalib), len(Stest)
-
-    M = list(np.concatenate([Scalib, Stest])) # (ordered) set of all predictions
-    M.sort()
-
-    def FR(j, t, l): # O(n+m)
-        calib_avg_loss = (l * (Stest[j] <= t) + np.sum(Lcalib * (Scalib <= t))) / (Ncalib + 1)
-        test_avg_sel = (1 + np.sum(Stest <= t) - (Stest[j] <= t)) / Ntest
-        return calib_avg_loss / test_avg_sel
-
-    def FR_hat(j, t, l):
-        calib_avg_loss = (l + np.sum(Lcalib * (Scalib <= t))) / (Ncalib + 1)
-        test_avg_sel = (1 + np.sum(Stest <= t) - (Stest[j] <= t)) / Ntest
-        return calib_avg_loss / test_avg_sel
-
-    def t_gamma(j, l): # O((n+m)^2)
-        max_t = -np.inf
-        for cur_t in M:
-            if FR(j, cur_t, l) <= gamma:
-                max_t = max(max_t, cur_t)
-        return max_t
-
-    def ell(j, t): # O(n+m)
-        return (Ncalib + 1) * gamma / Ntest * (1 + np.sum(Stest <= t) - (Stest[j] <= t)) - np.sum(Lcalib * (Scalib <= t))
-
-    evalues = np.zeros(Ntest)
-
-    for j in range(Ntest): # m iterations
-        if not oracle:
-            t_1 = t_gamma(j, 1)
-            t_0 = t_gamma(j, 0)
-
-            if Stest[j] > t_1:
-                continue # e-value is zero
-
-            if t_1 == t_0:
-                evalues[j] = (Ncalib + 1) / (1 + np.sum(Lcalib * (Scalib <= t_1)))
-                continue # same upper/lower bound case
-
-            max_ell = np.zeros(Ntest + Ncalib) # max_ell[rank(t)]: max of l(t') with t' > t, t' in M, and FR(t', 0) <= gamma. 
-                                               # max_ell[0] correspond to the smallest t in M, max_ell[-1] correspond to the largest t in M.
-            last_max = -np.inf
-            for i, t in zip(range(Ntest + Ncalib - 1, -1, -1), reversed(M)): # n+m iterations
-                max_ell[i] = last_max
-
-                if FR(j, t, 0) <= gamma:
-                    last_max = max(last_max, ell(j, t)) # both O(n+m)
-
-            M_star = []
-            for i, t in enumerate(M):
-                if t < max(Stest[j], t_1):
-                    continue # this is to keep the index i
-                if t > t_0:
-                    break
-
-                if FR(j, t, 0) <= gamma and ell(j, t) > max_ell[i]:
-                    M_star.append(t)
-
-            evalue = np.inf
-            for t in M_star:
-                cur_val = (Ncalib + 1) / (ell(j, t) + np.sum(Lcalib * (Scalib <= t)))
-                evalue = min(evalue, cur_val)
-            
-            evalues[j] = evalue
-        else: # oracle e-value
-            t_j = t_gamma(j, Ltest[j])
-            evalue = (Ncalib + 1) * (Stest[j] <= t_j) / (Ltest[j] * (Stest[j] <= t_j) + np.sum(Lcalib * (Scalib <= t_j)))
-            evalues[j] = evalue
-    
-    if prune == 'hete':
-        evalues /= np.random.uniform(0, 1, len(evalues))
-    if prune == 'homo':
-        evalues /= np.random.uniform(0, 1)
-    sel = eBH(evalues, alpha)
-    
-    if not return_evals:
-        return sel
-    return sel, evalues
-
-def SCoRE_SDR_fast(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_evals=False):
-    """SCoRE testing procedure for Selective Deployment Risk (SDR) control. Optimized implementation with time complexity $O(N \log N)$.
-    
-    Args:
-        Dcalib (tuple): (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): (Ltest, Stest) for the test set.
-        alpha (float): The target error margin.
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
-        prune (str, optional): Optional boosting strategy (either 'hete' or 'homo'). Use of 'homo' is generally recommended.
-        oracle (bool, optional): [For testing only, when ground truth is available] Whether to use true underlying states. Defaults to False.
-        return_evals (bool, optional): Returns computed e-values if True.
-        
-    Returns:
-        Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
-    """
+    alpha = _validate_alpha(alpha)
+    gamma = _validate_gamma(gamma)
+    prune = _validate_prune(prune)
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
     Ncalib, Ntest = len(Scalib), len(Stest)
@@ -444,17 +326,17 @@ def SCoRE_SDR_fast(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return
             evalues[j] = evalue
     
     if prune == 'hete':
-        evalues /= np.random.uniform(0, 1, len(evalues))
+        evalues /= _uniform_random(random_state, len(evalues))
     if prune == 'homo':
-        evalues /= np.random.uniform(0, 1)
+        evalues /= _uniform_random(random_state)
     sel = eBH(evalues, alpha)
     
     if not return_evals:
-        return sel
+        return _as_index_array(sel)
     return sel, evalues
 
-def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, oracle=False, return_evals=False):
-    """SCoRE testing procedure for Selective Deployment Risk (SDR) control under the covariate shift case. Optimized implementation with time complexity $O(N \log N)$.
+def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, oracle=False, return_evals=False, random_state=None):
+    """SCoRE testing procedure for Selective Deployment Risk (SDR) control under the covariate shift case. Optimized implementation with time complexity $O(N \\log N)$.
     
     Args:
         Dcalib (tuple): (Lcalib, Scalib) for the calibration set.
@@ -466,10 +348,14 @@ def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, ora
         prune (str, optional): Optional boosting strategy (either 'hete' or 'homo'). Use of 'homo' is generally recommended.
         oracle (bool, optional): [For testing only, when ground truth is available] Whether to use true underlying states. Defaults to False.
         return_evals (bool, optional): Returns computed e-values if True.
+        random_state (int or np.random.Generator, optional): Random seed or generator used when pruning is enabled.
         
     Returns:
         Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
     """
+    alpha = _validate_alpha(alpha)
+    gamma = _validate_gamma(gamma)
+    prune = _validate_prune(prune)
     Lcalib, Scalib = Dcalib
     Ltest, Stest = Dtest # True Ltest should not be used
     Ncalib, Ntest = len(Scalib), len(Stest)
@@ -571,11 +457,11 @@ def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, ora
             evalues[j] = evalue
     
     if prune == 'hete':
-        evalues /= np.random.uniform(0, 1, len(evalues))
+        evalues /= _uniform_random(random_state, len(evalues))
     if prune == 'homo':
-        evalues /= np.random.uniform(0, 1)
+        evalues /= _uniform_random(random_state)
     sel = eBH(evalues, alpha)
     
     if not return_evals:
-        return sel
+        return _as_index_array(sel)
     return sel, evalues
