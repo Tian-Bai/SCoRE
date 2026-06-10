@@ -140,8 +140,8 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
         wcalib, wtest = w_pred_calibtest[calib_idx], w_pred_calibtest[test_idx]
 
     for q in q_list:
-        sel_r = SCoRE_MDR_w([Lcalib, Scalib_pred], [Ltest, Stest_pred], wcalib, wtest, q, q) # considering reward
-        sel = SCoRE_MDR_w([Lcalib, Lcalib_pred], [Ltest, Ltest_pred], wcalib, wtest, q, q)   # not considering reward
+        sel_r = SCoRE_MDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q) # considering reward
+        sel = SCoRE_MDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q)   # not considering reward
 
         mdr, nsel = eval_MDR(Ltest, np.ones_like(Ltest), sel)
         _, reward = eval_MDR(Ltest, Rtest, sel)

@@ -9,7 +9,7 @@ from scipy.special import expit
 root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
-from SCoRE import eval_SDR, gen_data_1, gen_data_2, gen_data_Jin2023, loss_1, loss_2, loss_Jin2023, Lpredictor, SCoRE_SDR_w_fast
+from SCoRE import eval_SDR, gen_data_1, gen_data_2, gen_data_Jin2023, loss_1, loss_2, loss_Jin2023, Lpredictor, SCoRE_SDR_w
 import argparse
 from tqdm import tqdm
 
@@ -223,13 +223,13 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
             Scalib_pred = Lcalib_pred / mu_reward.predict(Xcalib)
             Stest_pred = Ltest_pred / mu_reward.predict(Xtest)
 
-        homo_sel = SCoRE_SDR_w_fast([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q, 'homo', oracle=oracle)
-        hete_sel = SCoRE_SDR_w_fast([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q, 'hete', oracle=oracle)
-        dtm_sel = SCoRE_SDR_w_fast([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q, None, oracle=oracle)
+        homo_sel = SCoRE_SDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q, 'homo')
+        hete_sel = SCoRE_SDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q, 'hete')
+        dtm_sel = SCoRE_SDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q, None)
 
-        homo_sel_r = SCoRE_SDR_w_fast([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q, 'homo', oracle=oracle)
-        hete_sel_r = SCoRE_SDR_w_fast([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q, 'hete', oracle=oracle)
-        dtm_sel_r = SCoRE_SDR_w_fast([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q, None, oracle=oracle)
+        homo_sel_r = SCoRE_SDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q, 'homo')
+        hete_sel_r = SCoRE_SDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q, 'hete')
+        dtm_sel_r = SCoRE_SDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q, None)
 
         homo_sdr, _, homo_nsel = eval_SDR(Ltest, np.ones_like(Ltest), homo_sel)
         hete_sdr, _, hete_nsel = eval_SDR(Ltest, np.ones_like(Ltest), hete_sel)

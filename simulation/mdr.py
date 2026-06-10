@@ -131,8 +131,8 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
         Stest_pred = Ltest_pred / mu_reward.predict(Xtest)
 
     for q in q_list:
-        sel = SCoRE_MDR([Lcalib, Lcalib_pred], [None, Ltest_pred], q, q)
-        sel_r = SCoRE_MDR([Lcalib, Scalib_pred], [None, Stest_pred], q, q)
+        sel = SCoRE_MDR([Lcalib, Lcalib_pred], Ltest_pred, q, q)
+        sel_r = SCoRE_MDR([Lcalib, Scalib_pred], Stest_pred, q, q)
 
         # see the number of selection. this will be equal to power with reward type 0
         mdr, nsel = eval_MDR(Ltest, np.ones_like(Ltest), sel)

@@ -8,7 +8,7 @@ from scipy.special import expit
 root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 root_dir = os.path.normpath(root_dir)
 sys.path.append(root_dir)
-from SCoRE import SCoRE_SDR_w_fast
+from SCoRE import SCoRE_SDR_w
 from SCoRE import eval_SDR
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -144,13 +144,13 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
     for q in q_list:
         Scalib_pred, Stest_pred = (Lcalib_pred - q) / Rcalib_pred, (Ltest_pred - q) / Rtest_pred
 
-        homo_sel = SCoRE_SDR_w_fast([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q, 'homo')
-        hete_sel = SCoRE_SDR_w_fast([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q, 'hete')
-        dtm_sel = SCoRE_SDR_w_fast([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q, None)
+        homo_sel = SCoRE_SDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q, 'homo')
+        hete_sel = SCoRE_SDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q, 'hete')
+        dtm_sel = SCoRE_SDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q, None)
 
-        homo_sel_r = SCoRE_SDR_w_fast([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q, 'homo')
-        hete_sel_r = SCoRE_SDR_w_fast([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q, 'hete')
-        dtm_sel_r = SCoRE_SDR_w_fast([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q, None)
+        homo_sel_r = SCoRE_SDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q, 'homo')
+        hete_sel_r = SCoRE_SDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q, 'hete')
+        dtm_sel_r = SCoRE_SDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q, None)
 
         homo_sdr, _, homo_nsel = eval_SDR(Ltest, np.ones_like(Ltest), homo_sel)
         hete_sdr, _, hete_nsel = eval_SDR(Ltest, np.ones_like(Ltest), hete_sel)

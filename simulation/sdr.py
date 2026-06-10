@@ -132,13 +132,13 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
             Scalib_pred = Lcalib_pred / mu_reward.predict(Xcalib)
             Stest_pred = Ltest_pred / mu_reward.predict(Xtest)
 
-        homo_sel = SCoRE_SDR([Lcalib, Lcalib_pred], [None, Ltest_pred], q, q, 'homo', oracle=oracle)
-        hete_sel = SCoRE_SDR([Lcalib, Lcalib_pred], [None, Ltest_pred], q, q, 'hete', oracle=oracle)
-        dtm_sel = SCoRE_SDR([Lcalib, Lcalib_pred], [None, Ltest_pred], q, q, None, oracle=oracle)
+        homo_sel = SCoRE_SDR([Lcalib, Lcalib_pred], Ltest_pred, q, q, 'homo')
+        hete_sel = SCoRE_SDR([Lcalib, Lcalib_pred], Ltest_pred, q, q, 'hete')
+        dtm_sel = SCoRE_SDR([Lcalib, Lcalib_pred], Ltest_pred, q, q, None)
 
-        homo_sel_r = SCoRE_SDR([Lcalib, Scalib_pred], [None, Stest_pred], q, q, 'homo', oracle=oracle)
-        hete_sel_r = SCoRE_SDR([Lcalib, Scalib_pred], [None, Stest_pred], q, q, 'hete', oracle=oracle)
-        dtm_sel_r = SCoRE_SDR([Lcalib, Scalib_pred], [None, Stest_pred], q, q, None, oracle=oracle)
+        homo_sel_r = SCoRE_SDR([Lcalib, Scalib_pred], Stest_pred, q, q, 'homo')
+        hete_sel_r = SCoRE_SDR([Lcalib, Scalib_pred], Stest_pred, q, q, 'hete')
+        dtm_sel_r = SCoRE_SDR([Lcalib, Scalib_pred], Stest_pred, q, q, None)
 
         homo_sdr, _, homo_nsel = eval_SDR(Ltest, np.ones_like(Ltest), homo_sel)
         hete_sdr, _, hete_nsel = eval_SDR(Ltest, np.ones_like(Ltest), hete_sel)

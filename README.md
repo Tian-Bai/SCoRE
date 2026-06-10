@@ -23,7 +23,7 @@ python -m pip install -e ".[experiments]"
 After the package is published, install it with:
 
 ```bash
-python -m pip install SCoRE
+python -m pip install score-select
 ```
 
 ## Quickstart
@@ -36,9 +36,8 @@ lcalib = np.array([0, 1, 0, 1])
 scalib = np.array([0.1, 0.4, 0.2, 0.8])
 stest = np.array([0.15, 0.5, 0.9])
 
-# Dtest keeps the same tuple shape as Dcalib, but the true test loss is not used.
 dcalib = (lcalib, scalib)
-dtest = (None, stest)
+dtest = stest
 
 mdr_selected = SCoRE_MDR(dcalib, dtest, alpha=0.5, gamma=0.5)
 sdr_selected = SCoRE_SDR(dcalib, dtest, alpha=0.5, gamma=0.5)
@@ -72,7 +71,7 @@ Recommended package entry points:
 Additional utilities:
 
 - `CS`
-- `SCoRE_MDR_bf`, `SCoRE_MDR_w`, `SCoRE_SDR_w_fast`
+- `SCoRE_MDR_bf`, `SCoRE_MDR_w`, `SCoRE_SDR_w`
 - `BH`, `eBH`
 - `eval_MDR`, `eval_SDR`
 - `loss_Jin2023`, `loss_1`, `loss_2`

@@ -3,7 +3,7 @@ requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "score-selective-prediction"
+name = "score-select"
 version = "0.1.0"
 description = "Conformal selective prediction with general risk control."
 readme = "README.md"

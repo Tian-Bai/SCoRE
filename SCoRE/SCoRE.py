@@ -15,6 +15,43 @@ def _as_index_array(sel):
     return np.asarray(sel, dtype=int)
 
 
+def _as_1d_array(name, values):
+    arr = np.asarray(values)
+    if arr.ndim != 1:
+        raise ValueError(f"{name} must be a one-dimensional array.")
+    return arr
+
+
+def _split_calib(Dcalib):
+    if not isinstance(Dcalib, (tuple, list)) or len(Dcalib) != 2:
+        raise ValueError("Dcalib must be a tuple or list of losses and scores (Lcalib, Scalib).")
+
+    Lcalib = _as_1d_array("Lcalib", Dcalib[0])
+    Scalib = _as_1d_array("Scalib", Dcalib[1])
+    if len(Lcalib) != len(Scalib):
+        raise ValueError("The losses and scores (Lcalib, Scalib) must have the same length.")
+    return Lcalib, Scalib
+
+
+def _is_legacy_dtest(Dtest):
+    if not isinstance(Dtest, (tuple, list)) or len(Dtest) != 2:
+        return False
+    if np.ndim(Dtest[1]) == 0:
+        return False
+    return Dtest[0] is None or np.ndim(Dtest[0]) > 0
+
+
+def _get_stest(Dtest):
+    if _is_legacy_dtest(Dtest):
+        Dtest = Dtest[1]
+    return _as_1d_array("Dtest", Dtest)
+
+
+def _validate_binary_loss(Lcalib):
+    if not np.all(np.isin(Lcalib, [0, 1])):
+        raise ValueError("Conformal selection requires binary calibration losses in {0, 1}.")
+
+
 def _validate_alpha(alpha):
     alpha = float(alpha)
     if not np.isfinite(alpha) or alpha <= 0 or alpha > 1:
@@ -37,22 +74,24 @@ def _validate_prune(prune):
 
 def CS(Dcalib, Dtest, alpha, mult_test=True, return_pvals=False):
     """Conformal Selection (CS) procedure for binary losses that controls the marginal deployment risk (MDR) or selective deployment risk (SDR).
+    Here, MDR reduces to the average type-I error and SDR reduces to the usual false discovery rate (FDR).
     
-    Applicable only when the loss function evaluates strictly to {0,1}.
+    The function applies only when the loss function evaluates strictly to {0,1}.
     
     Args:
-        Dcalib (tuple): A tuple containing (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): A tuple containing (Ltest, Stest) for the test set.
+        Dcalib (tuple): A tuple containing losses and scores (Lcalib, Scalib) for the calibration set.
+        Dtest (array-like): Test scores Stest. A legacy tuple/list (ignored, Stest) is also accepted.
         alpha (float): The target error margin.
         mult_test (bool): Whether to perform multiple testing correction using the Benjamini-Hochberg (BH) procedure. If False, MDR is controlled; otherwise SDR is controlled.
         return_pvals (bool): If True, returns the calculated p-values alongside the selected indices.
         
     Returns:
-        Union[list, tuple]: A list of selected indices, or a tuple of (selection_list, p-values) if return_pvals is True.
+        Union[np.ndarray, tuple]: Selected indices, or (selected indices, p-values) if return_pvals is True.
     """
     alpha = _validate_alpha(alpha)
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
+    Lcalib, Scalib = _split_calib(Dcalib)
+    _validate_binary_loss(Lcalib)
+    Stest = _get_stest(Dtest)
     Ncalib, Ntest = len(Scalib), len(Stest)
 
     calib_scores = 1000 * (Lcalib == 0) + Scalib
@@ -73,21 +112,22 @@ def CS(Dcalib, Dtest, alpha, mult_test=True, return_pvals=False):
 
 def SCoRE_MDR_bf(Dcalib, Dtest, alpha, gamma, return_evals=False):
     """Brute-force algorithm for SCoRE testing with Marginal Deployment Risk (MDR) control. The algorithm manually search for a suitable cutoff t.
+    Compared to SCoRE_MDR, this brute-force computation enables computing the SCoRE e-values explicitly.
     
     Args:
-        Dcalib (tuple): A tuple containing (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): A tuple containing (Ltest, Stest) for the test set.
+        Dcalib (tuple): A tuple containing losses and scores (Lcalib, Scalib) for the calibration set.
+        Dtest (array-like): Test scores Stest. A legacy tuple/list (ignored, Stest) is also accepted.
         alpha (float): The target error margin.
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
+        gamma (float): A tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
         return_evals (bool): Whether to output the computed e-values. Defaults to False.
         
     Returns:
-        Union[list, tuple]: A list of selected indices, or a tuple of (selection_list, p-values) if return_pvals is True.
+        Union[np.ndarray, tuple]: Selected indices, or (selected indices, e-values) if return_evals is True.
     """
     alpha = _validate_alpha(alpha)
     gamma = _validate_gamma(gamma)
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
+    Lcalib, Scalib = _split_calib(Dcalib)
+    Stest = _get_stest(Dtest)
     Ncalib, Ntest = len(Scalib), len(Stest)
 
     M = list(np.concatenate([Scalib, Stest]))
@@ -127,18 +167,18 @@ def SCoRE_MDR(Dcalib, Dtest, alpha, gamma):
     """SCoRE testing procedure with Marginal Deployment Risk (MDR) control, implemented using the computational shortcut. Note the e-values are not directly available with this shortcut.
     
     Args:
-        Dcalib (tuple): A tuple containing (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): A tuple containing (Ltest, Stest) for the test set.
+        Dcalib (tuple): A tuple containing losses and scores (Lcalib, Scalib) for the calibration set.
+        Dtest (array-like): Test scores Stest. A legacy tuple/list (ignored, Stest) is also accepted.
         alpha (float): The target error margin. 
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
+        gamma (float): A tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
         
     Returns:
         list: A list of selected instances with low risk and deemed safe to deploy.
     """
     alpha = _validate_alpha(alpha)
     gamma = _validate_gamma(gamma)
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
+    Lcalib, Scalib = _split_calib(Dcalib)
+    Stest = _get_stest(Dtest)
     Ncalib, Ntest = len(Scalib), len(Stest)
 
     sel = []
@@ -163,24 +203,30 @@ def SCoRE_MDR(Dcalib, Dtest, alpha, gamma):
     return _as_index_array(sel)
 
 def SCoRE_MDR_w(Dcalib, Dtest, wcalib, wtest, alpha, gamma):
-    """SCoRE testing procedure with Marginal Discovery Rate (MDR) control under the covariate shift case, implemented using the computational shortcut.
+    """SCoRE testing procedure with Marginal Deployment Risk (MDR) control under the covariate shift case, implemented using the computational shortcut.
     
     Args:
-        Dcalib (tuple): A tuple containing (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): A tuple containing (Ltest, Stest) for the test set.
+        Dcalib (tuple): A tuple containing losses and scores (Lcalib, Scalib) for the calibration set.
+        Dtest (array-like): Test scores Stest. A legacy tuple/list (ignored, Stest) is also accepted.
         wcalib (np.ndarray): The covariate shift weights for the calibration data.
         wtest (np.ndarray): The covariate shift weights for the test data.
         alpha (float): The target error margin.
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
+        gamma (float): A tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
         
     Returns:
         list: A list of selected instances with low risk and deemed safe to deploy.
     """
     alpha = _validate_alpha(alpha)
     gamma = _validate_gamma(gamma)
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
+    Lcalib, Scalib = _split_calib(Dcalib)
+    Stest = _get_stest(Dtest)
+    wcalib = _as_1d_array("wcalib", wcalib)
+    wtest = _as_1d_array("wtest", wtest)
     Ncalib, Ntest = len(Scalib), len(Stest)
+    if len(wcalib) != Ncalib:
+        raise ValueError("wcalib must have the same length as Lcalib and Scalib.")
+    if len(wtest) != Ntest:
+        raise ValueError("wtest must have the same length as Stest.")
 
     sel = []
 
@@ -206,18 +252,17 @@ def SCoRE_MDR_w(Dcalib, Dtest, wcalib, wtest, alpha, gamma):
 
 ######## SDR ########
 
-def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_evals=False, random_state=None):
+def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, return_evals=False, random_state=None):
     """SCoRE testing procedure for Selective Deployment Risk (SDR) control. Optimized implementation with time complexity $O(m(n+m) + (n+m)\\log(n+m))$.
     
     Args:
-        Dcalib (tuple): (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): (Ltest, Stest) for the test set.
+        Dcalib (tuple): losses and scores (Lcalib, Scalib) for the calibration set.
+        Dtest (array-like): Test scores Stest. A legacy tuple/list (ignored, Stest) is also accepted.
         alpha (float): The target error margin.
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
+        gamma (float): A tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
         prune (str, optional): Optional boosting strategy (either 'hete' or 'homo'). Use of 'homo' is generally recommended.
-        oracle (bool, optional): [For testing only, when ground truth is available] Whether to use true underlying states. Defaults to False.
         return_evals (bool, optional): Returns computed e-values if True.
-        random_state (int or np.random.Generator, optional): Random seed or generator used when pruning is enabled.
+        random_state (int or np.random.Generator, optional): Random seed or generator used when pruning is enabled. Randomization is only needed for the boosting strategies.
         
     Returns:
         Union[list, tuple]: Selection set indices, or combined tuple depending on `return_evals`.
@@ -225,8 +270,8 @@ def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_eval
     alpha = _validate_alpha(alpha)
     gamma = _validate_gamma(gamma)
     prune = _validate_prune(prune)
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
+    Lcalib, Scalib = _split_calib(Dcalib)
+    Stest = _get_stest(Dtest)
     Ncalib, Ntest = len(Scalib), len(Stest)
 
     Scalib_tagged = [(lp, l, 'calib') for lp, l in zip(Scalib, Lcalib)]
@@ -262,20 +307,16 @@ def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_eval
         # we precompute all FR, t_gamma, and ell
         FR_0 = np.zeros(Ncalib + Ntest)
         FR_1 = np.zeros(Ncalib + Ntest)
-        FR_j = np.zeros(Ncalib + Ntest) # for oracle only - FR(j, t, Ltest[j])
 
         ELL = np.zeros(Ncalib + Ntest)
 
         # pairs of (i, t)
-        t_0, t_1, t_j = (-1, -np.inf), (-1, -np.inf), (-1, -np.inf)
+        t_0, t_1 = (-1, -np.inf), (-1, -np.inf)
 
         # compute FR and ell
         for i, (t, _, _) in enumerate(M_tagged):
             FR_0[i] = NUMER[i] / (DENOM[i] - (Stest[j] <= t)) / (Ncalib + 1) * Ntest
             FR_1[i] = (NUMER[i] + (Stest[j] <= t)) / (DENOM[i] - (Stest[j] <= t)) / (Ncalib + 1) * Ntest
-            
-            if oracle:
-                FR_j[i] = (NUMER[i] + Ltest[j] * (Stest[j] <= t)) / (DENOM[i] - (Stest[j] <= t)) / (Ncalib + 1) * Ntest
 
             ELL[i] = (Ncalib + 1) * gamma / Ntest * (DENOM[i] - (Stest[j] <= t)) - NUMER[i]
 
@@ -285,45 +326,39 @@ def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_eval
                 t_0 = (i, t)
             if FR_1[i] <= gamma:
                 t_1 = (i, t)
-            if oracle and FR_j[i] <= gamma:
-                t_j = (i, t)
 
-        if not oracle:
-            if Stest[j] > t_1[1]:
-                continue # e-value is zero
+        if Stest[j] > t_1[1]:
+            continue # e-value is zero
 
-            if t_1[1] == t_0[1]:
-                evalues[j] = (Ncalib + 1) / (1 + NUMER[t_1[0]])
-                continue # same upper/lower bound case
+        if t_1[1] == t_0[1]:
+            evalues[j] = (Ncalib + 1) / (1 + NUMER[t_1[0]])
+            continue # same upper/lower bound case
 
-            max_ell = np.zeros(Ntest + Ncalib) # max_ell[rank(t)]: max of l(t') with t' > t, t' in M, and FR(t', 0) <= gamma. 
-                                               # max_ell[0] correspond to the smallest t in M, max_ell[-1] correspond to the largest t in M.
-            last_max = -np.inf
-            for i, t in zip(range(Ntest + Ncalib - 1, -1, -1), reversed(M)): # n+m iterations
-                max_ell[i] = last_max
+        max_ell = np.zeros(Ntest + Ncalib) # max_ell[rank(t)]: max of l(t') with t' > t, t' in M, and FR(t', 0) <= gamma. 
+                                           # max_ell[0] correspond to the smallest t in M, max_ell[-1] correspond to the largest t in M.
+        last_max = -np.inf
+        for i, t in zip(range(Ntest + Ncalib - 1, -1, -1), reversed(M)): # n+m iterations
+            max_ell[i] = last_max
 
-                if FR_0[i] <= gamma:
-                    last_max = max(last_max, ELL[i]) # both O(n+m)
+            if FR_0[i] <= gamma:
+                last_max = max(last_max, ELL[i]) # both O(n+m)
 
-            M_star = [] # store pairs of (i, t)
-            for i, t in enumerate(M):
-                if t < max(Stest[j], t_1[1]):
-                    continue # this is to keep the index i
-                if t > t_0[1]:
-                    break
+        M_star = [] # store pairs of (i, t)
+        for i, t in enumerate(M):
+            if t < max(Stest[j], t_1[1]):
+                continue # this is to keep the index i
+            if t > t_0[1]:
+                break
 
-                if FR_0[i] <= gamma and ELL[i] > max_ell[i]:
-                    M_star.append((i, t))
+            if FR_0[i] <= gamma and ELL[i] > max_ell[i]:
+                M_star.append((i, t))
 
-            evalue = np.inf
-            for i, t in M_star:
-                cur_val = (Ncalib + 1) / (ELL[i] + NUMER[i])
-                evalue = min(evalue, cur_val)
-            
-            evalues[j] = evalue
-        else: # oracle e-value
-            evalue = (Ncalib + 1) * (Stest[j] <= t_j) / (Ltest[j] * (Stest[j] <= t_j) + NUMER[t_j[0]])
-            evalues[j] = evalue
+        evalue = np.inf
+        for i, t in M_star:
+            cur_val = (Ncalib + 1) / (ELL[i] + NUMER[i])
+            evalue = min(evalue, cur_val)
+        
+        evalues[j] = evalue
     
     if prune == 'hete':
         evalues /= _uniform_random(random_state, len(evalues))
@@ -335,18 +370,17 @@ def SCoRE_SDR(Dcalib, Dtest, alpha, gamma, prune=None, oracle=False, return_eval
         return _as_index_array(sel)
     return sel, evalues
 
-def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, oracle=False, return_evals=False, random_state=None):
-    """SCoRE testing procedure for Selective Deployment Risk (SDR) control under the covariate shift case. Optimized implementation with time complexity $O(N \\log N)$.
+def SCoRE_SDR_w(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, return_evals=False, random_state=None):
+    """SCoRE testing procedure for Selective Deployment Risk (SDR) control under the covariate shift case. Optimized implementation with time complexity $O(m(n+m) + (n+m)\\log(n+m))$.
     
     Args:
-        Dcalib (tuple): (Lcalib, Scalib) for the calibration set.
-        Dtest (tuple): (Ltest, Stest) for the test set.
+        Dcalib (tuple): losses and scores (Lcalib, Scalib) for the calibration set.
+        Dtest (array-like): Test scores Stest. A legacy tuple/list (ignored, Stest) is also accepted.
         wcalib (np.ndarray): The covariate shift weights for the calibration data.
         wtest (np.ndarray): The covariate shift weights for the test data.
         alpha (float): The target error margin.
-        gamma (float): Trade-off tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
+        gamma (float): A tuning parameter spanning [0, 1]. Recommended value is gamma=alpha.
         prune (str, optional): Optional boosting strategy (either 'hete' or 'homo'). Use of 'homo' is generally recommended.
-        oracle (bool, optional): [For testing only, when ground truth is available] Whether to use true underlying states. Defaults to False.
         return_evals (bool, optional): Returns computed e-values if True.
         random_state (int or np.random.Generator, optional): Random seed or generator used when pruning is enabled.
         
@@ -356,9 +390,15 @@ def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, ora
     alpha = _validate_alpha(alpha)
     gamma = _validate_gamma(gamma)
     prune = _validate_prune(prune)
-    Lcalib, Scalib = Dcalib
-    Ltest, Stest = Dtest # True Ltest should not be used
+    Lcalib, Scalib = _split_calib(Dcalib)
+    Stest = _get_stest(Dtest)
+    wcalib = _as_1d_array("wcalib", wcalib)
+    wtest = _as_1d_array("wtest", wtest)
     Ncalib, Ntest = len(Scalib), len(Stest)
+    if len(wcalib) != Ncalib:
+        raise ValueError("wcalib must have the same length as Lcalib and Scalib.")
+    if len(wtest) != Ntest:
+        raise ValueError("wtest must have the same length as Stest.")
 
     Scalib_tagged = [(lp, l, w, 'calib') for lp, l, w in zip(Scalib, Lcalib, wcalib)]
     Stest_tagged = [(lp, 0, w, 'test') for lp, w in zip(Stest, wtest)] # 0 is dummy value
@@ -393,20 +433,16 @@ def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, ora
         # we precompute all FR, t_gamma, and ell
         FR_0 = np.zeros(Ncalib + Ntest)
         FR_1 = np.zeros(Ncalib + Ntest)
-        FR_j = np.zeros(Ncalib + Ntest) # for oracle only - FR(j, t, Ltest[j])
 
         ELL = np.zeros(Ncalib + Ntest)
 
         # pairs of (i, t)
-        t_0, t_1, t_j = (-1, -np.inf), (-1, -np.inf), (-1, -np.inf)
+        t_0, t_1 = (-1, -np.inf), (-1, -np.inf)
 
         # compute FR and ell
         for i, (t, _, _, _) in enumerate(M_tagged):
             FR_0[i] = NUMER[i] / (DENOM[i] - (Stest[j] <= t)) / (calib_w_sum + wtest[j]) * Ntest
             FR_1[i] = (NUMER[i] + wtest[j] * (Stest[j] <= t)) / (DENOM[i] - (Stest[j] <= t)) / (calib_w_sum + wtest[j]) * Ntest
-            
-            if oracle:
-                FR_j[i] = (NUMER[i] + wtest[j] * Ltest[j] * (Stest[j] <= t)) / (DENOM[i] - (Stest[j] <= t)) / (calib_w_sum + wtest[j]) * Ntest
 
             ELL[i] = (calib_w_sum + wtest[j]) / wtest[j] * gamma / Ntest * (DENOM[i] - (Stest[j] <= t)) - NUMER[i] / wtest[j]
 
@@ -416,45 +452,39 @@ def SCoRE_SDR_w_fast(Dcalib, Dtest, wcalib, wtest, alpha, gamma, prune=None, ora
                 t_0 = (i, t)
             if FR_1[i] <= gamma:
                 t_1 = (i, t)
-            if oracle and FR_j[i] <= gamma:
-                t_j = (i, t)
 
-        if not oracle:
-            if Stest[j] > t_1[1]:
-                continue # e-value is zero
+        if Stest[j] > t_1[1]:
+            continue # e-value is zero
 
-            if t_1[1] == t_0[1]:
-                evalues[j] = (calib_w_sum + wtest[j]) / (wtest[j] + NUMER[t_1[0]])
-                continue # same upper/lower bound case
+        if t_1[1] == t_0[1]:
+            evalues[j] = (calib_w_sum + wtest[j]) / (wtest[j] + NUMER[t_1[0]])
+            continue # same upper/lower bound case
 
-            max_ell = np.zeros(Ntest + Ncalib) # max_ell[rank(t)]: max of l(t') with t' > t, t' in M, and FR(t', 0) <= gamma. 
-                                               # max_ell[0] correspond to the smallest t in M, max_ell[-1] correspond to the largest t in M.
-            last_max = -np.inf
-            for i, t in zip(range(Ntest + Ncalib - 1, -1, -1), reversed(M)): # n+m iterations
-                max_ell[i] = last_max
+        max_ell = np.zeros(Ntest + Ncalib) # max_ell[rank(t)]: max of l(t') with t' > t, t' in M, and FR(t', 0) <= gamma. 
+                                           # max_ell[0] correspond to the smallest t in M, max_ell[-1] correspond to the largest t in M.
+        last_max = -np.inf
+        for i, t in zip(range(Ntest + Ncalib - 1, -1, -1), reversed(M)): # n+m iterations
+            max_ell[i] = last_max
 
-                if FR_0[i] <= gamma:
-                    last_max = max(last_max, ELL[i]) # both O(n+m)
+            if FR_0[i] <= gamma:
+                last_max = max(last_max, ELL[i]) # both O(n+m)
 
-            M_star = [] # store pairs of (i, t)
-            for i, t in enumerate(M):
-                if t < max(Stest[j], t_1[1]):
-                    continue # this is to keep the index i
-                if t > t_0[1]:
-                    break
+        M_star = [] # store pairs of (i, t)
+        for i, t in enumerate(M):
+            if t < max(Stest[j], t_1[1]):
+                continue # this is to keep the index i
+            if t > t_0[1]:
+                break
 
-                if FR_0[i] <= gamma and ELL[i] > max_ell[i]:
-                    M_star.append((i, t))
+            if FR_0[i] <= gamma and ELL[i] > max_ell[i]:
+                M_star.append((i, t))
 
-            evalue = np.inf
-            for i, t in M_star:
-                cur_val = (calib_w_sum + wtest[j]) / (wtest[j] * ELL[i] + NUMER[i])
-                evalue = min(evalue, cur_val)
-            
-            evalues[j] = evalue
-        else: # oracle e-value
-            evalue = (calib_w_sum + wtest[j]) * (Stest[j] <= t_j) / (wtest[j] * Ltest[j] * (Stest[j] <= t_j) + NUMER[t_j[0]])
-            evalues[j] = evalue
+        evalue = np.inf
+        for i, t in M_star:
+            cur_val = (calib_w_sum + wtest[j]) / (wtest[j] * ELL[i] + NUMER[i])
+            evalue = min(evalue, cur_val)
+        
+        evalues[j] = evalue
     
     if prune == 'hete':
         evalues /= _uniform_random(random_state, len(evalues))

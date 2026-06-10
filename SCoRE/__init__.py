@@ -6,7 +6,7 @@ from .SCoRE import (
     SCoRE_MDR_bf,
     SCoRE_MDR_w,
     SCoRE_SDR,
-    SCoRE_SDR_w_fast,
+    SCoRE_SDR_w,
 )
 from .utility import (
     BH,
@@ -33,7 +33,7 @@ __all__ = [
     "SCoRE_MDR_bf",
     "SCoRE_MDR_w",
     "SCoRE_SDR",
-    "SCoRE_SDR_w_fast",
+    "SCoRE_SDR_w",
     "eBH",
     "eval_MDR",
     "eval_SDR",

@@ -222,8 +222,8 @@ for i_itr in tqdm(range(Nrep * seedgroup, Nrep * (seedgroup + 1))):
         wtest = pred_test / (1 - pred_test)
 
     for q in q_list:
-        sel = SCoRE_MDR_w([Lcalib, Lcalib_pred], [None, Ltest_pred], wcalib, wtest, q, q)
-        sel_r = SCoRE_MDR_w([Lcalib, Scalib_pred], [None, Stest_pred], wcalib, wtest, q, q)
+        sel = SCoRE_MDR_w([Lcalib, Lcalib_pred], Ltest_pred, wcalib, wtest, q, q)
+        sel_r = SCoRE_MDR_w([Lcalib, Scalib_pred], Stest_pred, wcalib, wtest, q, q)
 
         # see the number of selection. this will be equal to power with reward type 0
         mdr, nsel = eval_MDR(Ltest, np.ones_like(Ltest), sel)
