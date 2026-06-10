@@ -1,5 +1,7 @@
 # SCoRE
 
+[![PyPI package](https://img.shields.io/pypi/v/score-select?label=pypi%20package)](https://pypi.org/project/score-select/)
+
 SCoRE implements conformal selective prediction procedures for marginal
 deployment risk (MDR) and selective deployment risk (SDR) control.
 
@@ -7,6 +9,10 @@ This repository also contains the simulation and application code used for the
 paper [Conformal Selective Prediction with General Risk Control](https://arxiv.org/abs/2603.24704).
 
 ## Installation
+
+```bash
+python -m pip install score-select
+```
 
 Install the package from a local checkout:
 
@@ -18,12 +24,6 @@ Install optional dependencies for the research scripts:
 
 ```bash
 python -m pip install -e ".[experiments]"
-```
-
-After the package is published, install it with:
-
-```bash
-python -m pip install score-select
 ```
 
 ## Quickstart
