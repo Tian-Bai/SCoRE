@@ -1,7 +1,7 @@
 """Drug WSR comparison under the original molecular-weight covariate shift.
 
-    python applications/drug/wdr_w.py
-    Rscript applications/drug/plot_wdr_w.R
+    python applications/drug/wsr_w.py
+    Rscript applications/drug/plot_wsr_w.R
 
 Uses w(X)=sigmoid(abs(MW(X)-400)/400), as in sdr_w.py. Calibration draws are
 uniform and independent of target draws with probabilities proportional to w.
