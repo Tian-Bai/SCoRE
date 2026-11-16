@@ -38,6 +38,7 @@ classifiers = [
 
 [project.optional-dependencies]
 experiments = [
+    "matplotlib>=3.6",
     "pandas>=1.5",
     "scikit-learn>=1.1",
     "scipy>=1.9",

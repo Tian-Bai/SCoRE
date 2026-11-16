@@ -1,4 +1,4 @@
-/results
+/results*
 *.csv
 /applications/drug/data
 /applications/drug/model
@@ -8,9 +8,14 @@
 .pkl
 .tab
 .DS_STORE
+*.pdf
+*.tex
+/tex
+/tests
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
+/.R-library/
 *.py[cod]
 *$py.class
 
